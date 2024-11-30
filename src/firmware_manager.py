@@ -1,6 +1,7 @@
 from typing import Generator, TYPE_CHECKING
 from pymavlink import mavutil
 from serial import Serial
+import struct
 
 if TYPE_CHECKING:
     from pymavlink.mavutil import mavserial
@@ -66,8 +67,24 @@ def _sync(ser: Serial) -> None:
     if reply_bytes != INSYNC + OK:
         raise Exception("Got unexpected reply from the serial device:", reply_bytes)
 
-def _get_info(param: bytes):
-    pass
+
+def _get_info(ser: Serial, param: bytes):
+    ser.reset_input_buffer()
+    ser.write(GET_DEVICE + param + EOC)
+    ser.flush()
+
+    info_bytes = ser.read(4)
+    if len(info_bytes) < 4:
+        print(info_bytes)
+        raise RuntimeError("Expected to recieve 4 bytes from the buffer, but got", info_bytes)
+    info = struct.unpack("<I", info_bytes)
+
+    reply_bytes = ser.read(2)
+    if reply_bytes != INSYNC + OK:
+        print(reply_bytes)
+        raise Exception("Got unexpected reply from the serial device:", reply_bytes)
+
+    return info[0]
 
 def _get_compatible_boards(board_id: int):
     pass
