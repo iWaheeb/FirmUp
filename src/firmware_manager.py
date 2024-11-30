@@ -1,5 +1,6 @@
 from typing import Generator, TYPE_CHECKING
 from pymavlink import mavutil
+from serial import Serial
 
 if TYPE_CHECKING:
     from pymavlink.mavutil import mavserial
@@ -57,8 +58,13 @@ NSH_REBOOT_BL   = b"reboot -b\n"
 NSH_REBOOT      = b"reboot\n"
 
 
-def _sync() -> None:
-    pass
+def _sync(ser: Serial) -> None:
+    ser.reset_input_buffer()
+    ser.write(GET_SYNC + EOC)
+    ser.flush()
+    reply_bytes = ser.read(2)
+    if reply_bytes != INSYNC + OK:
+        raise Exception("Got unexpected reply from the serial device:", reply_bytes)
 
 def _get_info(param: bytes):
     pass
