@@ -8,8 +8,8 @@ if TYPE_CHECKING:
 
 
 # protocol bytes
-INSYNC          = b'\x12'
-EOC             = b'\x20'
+IN_SYNC          = b'\x12'
+END_OF_CMD             = b'\x20'
 
 # reply bytes
 OK              = b'\x10'
@@ -43,9 +43,11 @@ EXTF_GET_CRC    = b'\x37'	  # compute & return a CRC of data in external flash
 
 CHIP_FULL_ERASE = b'\x40'     # full erase of flash
 
-INFO_BL_REV     = b'\x01'        # bootloader protocol revision
 BL_REV_MIN      = 2              # minimum supported bootloader protocol
 BL_REV_MAX      = 5              # maximum supported bootloader protocol
+
+# Get info parameters
+INFO_BL_REV     = b'\x01'        # bootloader protocol revision
 INFO_BOARD_ID   = b'\x02'        # board type
 INFO_BOARD_REV  = b'\x03'        # board revision
 INFO_FLASH_SIZE = b'\x04'        # max firmware size in bytes
@@ -61,16 +63,16 @@ NSH_REBOOT      = b"reboot\n"
 
 def _sync(ser: Serial) -> None:
     ser.reset_input_buffer()
-    ser.write(GET_SYNC + EOC)
+    ser.write(GET_SYNC + END_OF_CMD)
     ser.flush()
     reply_bytes = ser.read(2)
-    if reply_bytes != INSYNC + OK:
+    if reply_bytes != IN_SYNC + OK:
         raise Exception("Got unexpected reply from the serial device:", reply_bytes)
 
 
 def _get_info(ser: Serial, param: bytes):
     ser.reset_input_buffer()
-    ser.write(GET_DEVICE + param + EOC)
+    ser.write(GET_DEVICE + param + END_OF_CMD)
     ser.flush()
 
     info_bytes = ser.read(4)
@@ -80,7 +82,7 @@ def _get_info(ser: Serial, param: bytes):
     info = struct.unpack("<I", info_bytes)
 
     reply_bytes = ser.read(2)
-    if reply_bytes != INSYNC + OK:
+    if reply_bytes != IN_SYNC + OK:
         print(reply_bytes)
         raise Exception("Got unexpected reply from the serial device:", reply_bytes)
 
