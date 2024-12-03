@@ -2,6 +2,7 @@ from typing import Generator, TYPE_CHECKING
 from pymavlink import mavutil
 from serial import Serial
 import struct
+import binascii
 
 if TYPE_CHECKING:
     from pymavlink.mavutil import mavserial
@@ -9,7 +10,7 @@ if TYPE_CHECKING:
 
 # protocol bytes
 IN_SYNC          = b'\x12'
-END_OF_CMD             = b'\x20'
+END_OF_CMD       = b'\x20'
 
 # reply bytes
 OK              = b'\x10'
@@ -87,6 +88,17 @@ def _get_info(ser: Serial, param: bytes):
         raise Exception("Got unexpected reply from the serial device:", reply_bytes)
 
     return info[0]
+
+
+def _get_serial_number(ser: Serial):
+    sn_word_address = [0, 4, 8]
+    sn_raw = b''
+    for addr in sn_word_address:
+        ser.reset_input_buffer()
+        ser.write(GET_SN + struct.pack("I", addr) + END_OF_CMD)
+        sn_raw += ser.read(4)[::-1]
+    return binascii.hexlify(sn_raw).decode()
+
 
 def _get_compatible_boards(board_id: int):
     pass
