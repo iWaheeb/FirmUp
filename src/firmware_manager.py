@@ -100,6 +100,15 @@ def _get_serial_number(ser: Serial):
     return binascii.hexlify(sn_raw).decode()
 
 
+def _get_chip_description(ser: Serial):
+    ser.reset_input_buffer()
+    ser.write(GET_CHIP_DES + END_OF_CMD)
+    length = struct.unpack("I", ser.read(4))[0]
+    desc_buf = ser.read(length)
+    chip, rev = desc_buf.decode().split(',')
+    return chip + " rev " + rev
+
+
 def _get_compatible_boards(board_id: int):
     pass
 
