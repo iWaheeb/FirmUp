@@ -109,6 +109,28 @@ def _get_chip_description(ser: Serial):
     return chip + " rev " + rev
 
 
+def _erase_chip(ser: Serial) -> Generator[str, None, None]:
+    """ 
+    Erases the program area of the serial device.
+    Before calling this function, the bootloader requires that the following commands 
+    are sent to the device to prevent accidental erasure:
+    - GET_SYNC
+    - GET_DEVICE
+    """
+    ser.reset_input_buffer()
+    ser.write(CHIP_ERASE + END_OF_CMD)
+    yield "erasing chip status: in progress"
+
+    buf = b''
+    while not buf:
+        buf = ser.read(2)
+
+    if buf != IN_SYNC + OK:
+        raise Exception("Unexpected error occurred")
+    
+    yield "erasing chip status: completed"
+
+
 def _get_compatible_boards(board_id: int):
     pass
 
