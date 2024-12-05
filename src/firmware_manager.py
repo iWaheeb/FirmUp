@@ -3,6 +3,7 @@ from pymavlink import mavutil
 from serial import Serial
 import struct
 import binascii
+import time
 
 if TYPE_CHECKING:
     from pymavlink.mavutil import mavserial
@@ -109,7 +110,7 @@ def _get_chip_description(ser: Serial):
     return chip + " rev " + rev
 
 
-def _erase_chip(ser: Serial) -> Generator[str, None, None]:
+def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
     """ 
     Erases the program area of the serial device.
     Before calling this function, the bootloader requires that the following commands 
@@ -122,7 +123,11 @@ def _erase_chip(ser: Serial) -> Generator[str, None, None]:
     yield "erasing chip status: in progress"
 
     buf = b''
+    timeout = 2
+    start = time.monotonic()
     while not buf:
+        if (time.monotonic() - start) > timeout:
+            raise TimeoutError("Couldn't recieve a response from the board after erasing the chip")
         buf = ser.read(2)
 
     if buf != IN_SYNC + OK:
@@ -137,9 +142,6 @@ def _get_compatible_boards(board_id: int):
 def _validate_firmware_file(file: str):
     # check board type
     # check flash size
-    pass
-
-def _erase_firmware() -> None:
     pass
 
 def _upload_firmware(file: str) -> None:
