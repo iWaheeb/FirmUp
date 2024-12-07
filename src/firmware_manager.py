@@ -123,7 +123,7 @@ def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
     yield "erasing chip status: in progress"
 
     buf = b''
-    timeout = 2
+    timeout = 20
     start = time.monotonic()
     while not buf:
         if (time.monotonic() - start) > timeout:
