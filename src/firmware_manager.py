@@ -1,6 +1,7 @@
 from typing import Generator, TYPE_CHECKING
 from pymavlink import mavutil
 from serial import Serial
+from serial.tools.list_ports import comports
 import struct
 import binascii
 import time
@@ -176,8 +177,27 @@ def _get_progress() -> Generator:
 def _verify_firmware() -> None:
     pass
 
-def connect(port: str) -> "mavserial":
-    return mavutil.mavlink_connection(port)
+
+def connect(selected_port: str) -> Serial:
+    hwid: str = ''
+
+    for port in comports():
+        if port.device == selected_port:
+            hwid = f"VID:PID={port.vid:04X}:{port.pid:04X} SER={port.serial_number}"
+            conn: "mavserial" = mavutil.mavlink_connection(port.device)
+            break
+
+    conn.reboot_autopilot(True)
+    conn.port.flush()
+    conn.close()
+
+    time.sleep(2)
+    for port in comports():
+        if hwid in port.hwid:
+            ser = Serial(port.device, 115200, timeout=2)
+
+    return ser
+
 
 def get_board_info(conn: "mavserial") -> dict:
     conn.reboot_autopilot(hold_in_bootloader= True)
