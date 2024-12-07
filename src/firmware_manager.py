@@ -1,4 +1,4 @@
-from typing import Generator, TYPE_CHECKING
+from typing import Generator, TYPE_CHECKING, Union
 from pymavlink import mavutil
 from serial import Serial
 from serial.tools.list_ports import comports
@@ -73,7 +73,7 @@ def _sync(ser: Serial) -> None:
         raise Exception("Got unexpected reply from the serial device:", reply_bytes)
 
 
-def _get_info(ser: Serial, param: bytes):
+def _get_info(ser: Serial, param: bytes) -> int:
     ser.reset_input_buffer()
     ser.write(GET_DEVICE + param + END_OF_CMD)
     ser.flush()
@@ -92,7 +92,7 @@ def _get_info(ser: Serial, param: bytes):
     return info[0]
 
 
-def _get_serial_number(ser: Serial):
+def _get_serial_number(ser: Serial) -> str:
     sn_word_address = [0, 4, 8]
     sn_raw = b''
     for addr in sn_word_address:
@@ -102,13 +102,13 @@ def _get_serial_number(ser: Serial):
     return binascii.hexlify(sn_raw).decode()
 
 
-def _get_chip_description(ser: Serial):
+def _get_chip_description(ser: Serial) -> str:
     ser.reset_input_buffer()
     ser.write(GET_CHIP_DES + END_OF_CMD)
     length = struct.unpack("I", ser.read(4))[0]
     desc_buf = ser.read(length)
     chip, rev = desc_buf.decode().split(',')
-    return chip + " rev " + rev
+    return chip + " revision " + rev
 
 
 def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
@@ -199,10 +199,18 @@ def connect(selected_port: str) -> Serial:
     return ser
 
 
-def get_board_info(conn: "mavserial") -> dict:
-    conn.reboot_autopilot(hold_in_bootloader= True)
+def get_board_info(ser: Serial) -> dict[str, Union[int, str]]:
+    board_info = {
+        "Bootloader Revision": _get_info(ser, INFO_BL_REV),
+        "Board ID": _get_info(ser, INFO_BOARD_ID),
+        "Board Revision": _get_info(ser, INFO_BOARD_REV),
+        "Flash Size": _get_info(ser, INFO_FLASH_SIZE),
+        "Serial Number": _get_serial_number(ser),
+        "Chip": _get_chip_description(ser)
+    }
 
-    return {}
+    return board_info
+
 
 def upload_firmware(port: str, file):
     pass
