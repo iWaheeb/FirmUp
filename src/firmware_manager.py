@@ -25,8 +25,8 @@ GET_SYNC        = b'\x21'
 GET_DEVICE      = b'\x22'
 CHIP_ERASE      = b'\x23'
 CHIP_VERIFY     = b'\x24'     # rev2 only
-PROG_MULTI      = b'\x27'
-READ_MULTI      = b'\x28'     # rev2 only
+PROGRAM_MULTIPLE_BYTES = b'\x27'
+READ_MULTIPLE_BYTES = b'\x28'     # rev2 only
 GET_CRC         = b'\x29'     # rev3+
 GET_OTP         = b'\x2a'     # rev4+  , get a word from OTP area
 GET_SN          = b'\x2b'     # rev4+  , get a word from SN area
@@ -136,6 +136,26 @@ def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
     yield "erasing chip status: completed"
 
 
+def _write_to_program_area(ser: Serial, image: str):
+    """"
+    Write the firmware to the program area of the serial device.
+    Before using this function, make sure the firmware image is appropriate for 
+    the board by checking the board id and image size.
+    """
+
+    ser.reset_input_buffer()
+
+    chunks: list[bytes] = []
+    for i in range(0, len(image), 252):
+        chunks.append(image[i: i+252])
+
+    for chunk in chunks:
+        length = len(chunk).to_bytes()
+        ser.write(PROGRAM_MULTIPLE_BYTES + length + chunk + END_OF_CMD)
+        if ser.read(2) != IN_SYNC + OK:
+            raise Exception("Unexpected error occurred")
+
+
 def _get_compatible_boards(board_id: int):
     pass
 
@@ -144,8 +164,6 @@ def _validate_firmware_file(file: str):
     # check flash size
     pass
 
-def _upload_firmware(file: str) -> None:
-    pass
 
 def _get_progress() -> Generator:
     pass
