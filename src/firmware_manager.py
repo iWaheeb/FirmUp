@@ -136,7 +136,7 @@ def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
     yield "erasing chip status: completed"
 
 
-def _write_to_program_area(ser: Serial, image: str):
+def _write_to_program_area(ser: Serial, image: str) -> Generator[str, None, None]:
     """"
     Write the firmware to the program area of the serial device.
     Before using this function, make sure the firmware image is appropriate for 
@@ -149,11 +149,16 @@ def _write_to_program_area(ser: Serial, image: str):
     for i in range(0, len(image), 252):
         chunks.append(image[i: i+252])
 
+    sent_chunks = 0
     for chunk in chunks:
         length = len(chunk).to_bytes()
         ser.write(PROGRAM_MULTIPLE_BYTES + length + chunk + END_OF_CMD)
         if ser.read(2) != IN_SYNC + OK:
             raise Exception("Unexpected error occurred")
+
+        sent_chunks += 1
+        progress = round(sent_chunks / len(chunks) * 100, 2)
+        yield  f"{progress} %"
 
 
 def _get_compatible_boards(board_id: int):
