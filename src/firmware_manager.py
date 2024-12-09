@@ -182,13 +182,17 @@ def _verify_firmware() -> None:
 
 def connect(selected_port: str) -> Serial:
     hardware_id: str = ''
+    conn: "mavserial" = None
 
     for port in comports():
         if port.device == selected_port:
             hardware_id = str(port.vid) + ":" + port.serial_number
-            conn: "mavserial" = mavutil.mavlink_connection(port.device)
+            conn = mavutil.mavlink_connection(port.device)
             break
 
+    if conn is None:
+        raise Exception("couldn't find the desired serial device")
+    
     conn.reboot_autopilot(True)
     conn.port.flush()
     conn.close()
