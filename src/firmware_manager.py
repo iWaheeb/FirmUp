@@ -111,7 +111,7 @@ def _get_chip_description(ser: Serial) -> str:
     return chip + " revision " + rev
 
 
-def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
+def _erase_program_area(ser: Serial) -> str:
     """ 
     Erases the program area of the serial device.
     Before calling this function, the bootloader requires that the following commands 
@@ -119,6 +119,8 @@ def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
     - GET_SYNC
     - GET_DEVICE
     """
+
+    ser.write(GET_SYNC + END_OF_CMD + GET_DEVICE + INFO_BL_REV + END_OF_CMD)
     ser.reset_input_buffer()
     ser.write(CHIP_ERASE + END_OF_CMD)
     yield "erasing chip status: in progress"
@@ -132,9 +134,9 @@ def _erase_program_area(ser: Serial) -> Generator[str, None, None]:
         buf = ser.read(2)
 
     if buf != IN_SYNC + OK:
-        raise Exception("Unexpected error occurred")
+        raise Exception(f"Unexpected buff: {buf}")
     
-    yield "erasing chip status: completed"
+    return "Completed"
 
 
 def _write_to_program_area(ser: Serial, image: str) -> Generator[str, None, None]:
