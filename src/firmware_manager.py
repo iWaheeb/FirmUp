@@ -160,8 +160,10 @@ def _write_to_program_area(ser: Serial, image: str) -> Generator[str, None, None
             raise Exception("Unexpected error occurred")
 
         sent_chunks += 1
-        progress = round(sent_chunks / len(chunks) * 100, 2)
-        yield  f"{progress} %"
+
+        if sent_chunks % 100 == 0 or sent_chunks == len(chunks):
+            progress = round(sent_chunks / len(chunks) * 100)
+            yield  f"{progress}%"
 
 
 def _get_compatible_boards(board_id: int):
