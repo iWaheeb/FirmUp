@@ -2,9 +2,12 @@ from typing import Generator, TYPE_CHECKING, Union
 from pymavlink import mavutil
 from serial import Serial
 from serial.tools.list_ports import comports
+from base64 import b64decode
 import struct
 import binascii
 import time
+import json
+import zlib
 
 if TYPE_CHECKING:
     from pymavlink.mavutil import mavserial
@@ -123,7 +126,6 @@ def _erase_program_area(ser: Serial) -> str:
     ser.write(GET_SYNC + END_OF_CMD + GET_DEVICE + INFO_BL_REV + END_OF_CMD)
     ser.reset_input_buffer()
     ser.write(CHIP_ERASE + END_OF_CMD)
-    yield "erasing chip status: in progress"
 
     buf = b''
     timeout = 20
@@ -139,7 +141,7 @@ def _erase_program_area(ser: Serial) -> str:
     return "Completed"
 
 
-def _write_to_program_area(ser: Serial, image: str) -> Generator[str, None, None]:
+def _write_to_program_area(ser: Serial, image: bytes) -> Generator[str, None, None]:
     """"
     Write the firmware to the program area of the serial device.
     Before using this function, make sure the firmware image is appropriate for 
@@ -230,5 +232,32 @@ def get_board_info(ser: Serial) -> dict[str, Union[int, str]]:
     return board_info
 
 
-def upload_firmware(port: str, file):
-    pass
+def upload_firmware(ser: Serial, path: str) -> Generator[str, None, None]:
+    
+    _sync(ser)
+    _get_info(ser, INFO_BL_REV)
+    _get_info(ser, INFO_BOARD_ID)
+    _get_info(ser, INFO_FLASH_SIZE)
+    
+    progress = {
+        "Port": ser.name,
+        "Erasing Chip": "In Progress",
+        "Uploading Firmware": "0%"
+    }
+
+    yield progress
+
+    progress['Erasing Chip'] = _erase_program_area(ser)
+    yield progress
+
+    with open(path, "r") as file:
+        data : str = json.load(file)
+    encoded_image = data["image"]
+
+    image = zlib.decompress(b64decode(encoded_image))
+
+    for prog in _write_to_program_area(ser, image):
+        progress["Uploading Firmware"] = prog
+        yield progress
+
+    ser.write(REBOOT + END_OF_CMD)
