@@ -148,6 +148,10 @@ def _write_to_program_area(ser: Serial, image: str) -> Generator[str, None, None
 
     ser.reset_input_buffer()
 
+    # ensure image length is a multiple of 4 bytes
+    while ((len(image) % 4) != 0):
+        image += bytes(0xFF)
+
     chunks: list[bytes] = []
     for i in range(0, len(image), 252):
         chunks.append(image[i: i+252])
@@ -156,8 +160,9 @@ def _write_to_program_area(ser: Serial, image: str) -> Generator[str, None, None
     for chunk in chunks:
         length = len(chunk).to_bytes()
         ser.write(PROGRAM_MULTIPLE_BYTES + length + chunk + END_OF_CMD)
-        if ser.read(2) != IN_SYNC + OK:
-            raise Exception("Unexpected error occurred")
+        buf = ser.read(2)
+        if buf and buf != IN_SYNC + OK:
+            raise Exception(f"Unexpected buff: {buf}")
 
         sent_chunks += 1
 
