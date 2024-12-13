@@ -21,51 +21,26 @@ END_OF_CMD       = b'\x20'
 # reply bytes
 OK              = b'\x10'
 FAILED          = b'\x11'
-INVALID         = b'\x13'     # rev3+
-BAD_SILICON_REV = b'\x14'     # rev5+
+INVALID         = b'\x13'
+BAD_SILICON_REV = b'\x14'
 
 # command bytes
-NOP             = b'\x00'     # guaranteed to be discarded by the bootloader
 GET_SYNC        = b'\x21'
 GET_DEVICE      = b'\x22'
 CHIP_ERASE      = b'\x23'
-CHIP_VERIFY     = b'\x24'     # rev2 only
 PROGRAM_MULTIPLE_BYTES = b'\x27'
-READ_MULTIPLE_BYTES = b'\x28'     # rev2 only
-GET_CRC         = b'\x29'     # rev3+
-GET_OTP         = b'\x2a'     # rev4+  , get a word from OTP area
-GET_SN          = b'\x2b'     # rev4+  , get a word from SN area
-GET_CHIP        = b'\x2c'     # rev5+  , get chip version
-SET_BOOT_DELAY  = b'\x2d'     # rev5+  , set boot delay
-GET_CHIP_DES    = b'\x2e'     # rev5+  , get chip description in ASCII
-MAX_DES_LENGTH  = 20
+GET_CRC         = b'\x29'
+GET_SN          = b'\x2b'
+GET_CHIP_DES    = b'\x2e'
 
 REBOOT          = b'\x30'
-SET_BAUD        = b'\x33'     # set baud
+SET_BAUD        = b'\x33'     # TODO: consider using or deleting this
 
-EXTF_ERASE      = b'\x34'	  # erase sectors from external flash
-EXTF_PROG_MULTI = b'\x35'     # write bytes at external flash program address and increment
-EXTF_READ_MULTI = b'\x36'     # read bytes at address and increment
-EXTF_GET_CRC    = b'\x37'	  # compute & return a CRC of data in external flash
-
-CHIP_FULL_ERASE = b'\x40'     # full erase of flash
-
-BL_REV_MIN      = 2              # minimum supported bootloader protocol
-BL_REV_MAX      = 5              # maximum supported bootloader protocol
-
-# Get info parameters
-INFO_BL_REV     = b'\x01'        # bootloader protocol revision
-INFO_BOARD_ID   = b'\x02'        # board type
-INFO_BOARD_REV  = b'\x03'        # board revision
-INFO_FLASH_SIZE = b'\x04'        # max firmware size in bytes
-INFO_EXTF_SIZE  = b'\x06'        # available external flash size
-
-PROG_MULTI_MAX  = 252            # protocol max is 255, must be multiple of 4
-READ_MULTI_MAX  = 252            # protocol max is 255
-
-NSH_INIT        = bytearray(b'\x0d\x0d\x0d')
-NSH_REBOOT_BL   = b"reboot -b\n"
-NSH_REBOOT      = b"reboot\n"
+# GET_DEVICE parameters
+INFO_BL_REV     = b'\x01'
+INFO_BOARD_ID   = b'\x02'
+INFO_BOARD_REV  = b'\x03'
+INFO_FLASH_SIZE = b'\x04'
 
 crc_table = array.array('I', [
     0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,
@@ -182,6 +157,8 @@ def _write_to_program_area(ser: Serial, image: bytes) -> Generator[str, None, No
     the board by checking the board id and image size.
     """
 
+    CHUNK_SIZE = 252
+
     ser.reset_input_buffer()
 
     # ensure image length is a multiple of 4 bytes
@@ -189,8 +166,8 @@ def _write_to_program_area(ser: Serial, image: bytes) -> Generator[str, None, No
         image += bytes(0xFF)
 
     chunks: list[bytes] = []
-    for i in range(0, len(image), 252):
-        chunks.append(image[i: i+252])
+    for i in range(0, len(image), CHUNK_SIZE):
+        chunks.append(image[i: i+CHUNK_SIZE])
 
     sent_chunks = 0
     for chunk in chunks:
@@ -231,24 +208,19 @@ def _validate_firmware_file(file: str):
     pass
 
 
-def _get_progress() -> Generator:
-    pass
-
 def _verify_firmware(ser: Serial, image) -> None:
     ser.reset_input_buffer()
 
     expected_crc = _get_expected_crc32(2080768, image)
     ser.write(GET_CRC + END_OF_CMD)
     buf = ser.read(4)
-    print(buf)
     actual_crc = struct.unpack("I", buf)[0]
 
     if expected_crc != actual_crc:
         raise Exception(f"Verification failed. Expected crc value to be {expected_crc}, but got {actual_crc}")
-    print("expected crc", expected_crc, "actual crc", actual_crc)
 
 
-def connect(selected_port: str) -> Serial:
+def connect(selected_port: str, baudrate: int = 115200) -> Serial:
     hardware_id: str = ''
     conn: "mavserial" = None
 
@@ -270,7 +242,7 @@ def connect(selected_port: str) -> Serial:
     ser: Serial = None
     for port in comports():
         if hardware_id == str(port.vid) + ":" + port.serial_number:
-            ser = Serial(port.device, 115200, timeout=2)
+            ser = Serial(port.device, baudrate, timeout=2)
 
     if ser is None:
         raise Exception("couldn't find the desired serial device")
