@@ -22,7 +22,6 @@ END_OF_CMD       = b'\x20'
 OK              = b'\x10'
 FAILED          = b'\x11'
 INVALID         = b'\x13'
-BAD_SILICON_REV = b'\x14'
 
 # command bytes
 GET_SYNC        = b'\x21'
@@ -79,13 +78,24 @@ crc_table = array.array('I', [
 crc_padding = bytearray(b'\xff\xff\xff\xff')
 
 
-def _sync(ser: Serial) -> None:
+def _validate_response(recv_in_sync: bytes, recv_status: bytes):
+    if recv_in_sync != IN_SYNC:
+        raise RuntimeError(f"Expected to recieve IN_SYNC byte, but got {recv_in_sync}")
+
+    if recv_status == FAILED:
+        raise RuntimeError("Bootloader reports operation failed")
+    if recv_status == INVALID:
+        raise RuntimeError("Bootloader reports invalid operation")
+    if recv_status != OK:
+        raise RuntimeError(f"Expected to recieve OK byte, but got {recv_status}")
+
+
+def _get_sync(ser: Serial) -> None:
     ser.reset_input_buffer()
     ser.write(GET_SYNC + END_OF_CMD)
-    ser.flush()
-    reply_bytes = ser.read(2)
-    if reply_bytes != IN_SYNC + OK:
-        raise Exception("Got unexpected reply from the serial device:", reply_bytes)
+    recv_in_sync = ser.read(1)
+    recv_status = ser.read(1)
+    _validate_response(recv_in_sync, recv_status)
 
 
 def _get_info(ser: Serial, param: bytes) -> int:
@@ -95,14 +105,12 @@ def _get_info(ser: Serial, param: bytes) -> int:
 
     info_bytes = ser.read(4)
     if len(info_bytes) < 4:
-        print(info_bytes)
         raise RuntimeError("Expected to recieve 4 bytes from the buffer, but got", info_bytes)
     info = struct.unpack("<I", info_bytes)
 
-    reply_bytes = ser.read(2)
-    if reply_bytes != IN_SYNC + OK:
-        print(reply_bytes)
-        raise Exception("Got unexpected reply from the serial device:", reply_bytes)
+    recv_in_sync = ser.read(1)
+    recv_status = ser.read(1)
+    _validate_response(recv_in_sync, recv_status)
 
     return info[0]
 
@@ -114,16 +122,28 @@ def _get_serial_number(ser: Serial) -> str:
         ser.reset_input_buffer()
         ser.write(GET_SN + struct.pack("I", addr) + END_OF_CMD)
         sn_raw += ser.read(4)[::-1]
-    return binascii.hexlify(sn_raw).decode()
+        
+        recv_in_sync = ser.read(1)
+        recv_status = ser.read(1)
+        _validate_response(recv_in_sync, recv_status)
+
+    serial_number = binascii.hexlify(sn_raw).decode()
+    return serial_number
 
 
 def _get_chip_description(ser: Serial) -> str:
     ser.reset_input_buffer()
     ser.write(GET_CHIP_DES + END_OF_CMD)
-    length = struct.unpack("I", ser.read(4))[0]
+    length: int = struct.unpack("I", ser.read(4))[0]
     desc_buf = ser.read(length)
+
+    recv_in_sync = ser.read(1)
+    recv_status = ser.read(1)
+    _validate_response(recv_in_sync, recv_status)
+
     chip, rev = desc_buf.decode().split(',')
-    return chip + " revision " + rev
+    chip_description = chip + " revision " + rev
+    return chip_description
 
 
 def _erase_program_area(ser: Serial) -> str:
@@ -146,8 +166,9 @@ def _erase_program_area(ser: Serial) -> str:
             raise TimeoutError("Couldn't recieve a response from the board after erasing the chip")
         buf = ser.read(2)
 
-    if buf != IN_SYNC + OK:
-        raise Exception(f"Unexpected buff: {buf}")
+    recv_in_sync = bytes([buf[0]])
+    recv_status = bytes([buf[1]])
+    _validate_response(recv_in_sync, recv_status)
     
 
 def _write_to_program_area(ser: Serial, image: bytes) -> Generator[str, None, None]:
@@ -173,15 +194,16 @@ def _write_to_program_area(ser: Serial, image: bytes) -> Generator[str, None, No
     for chunk in chunks:
         length = len(chunk).to_bytes()
         ser.write(PROGRAM_MULTIPLE_BYTES + length + chunk + END_OF_CMD)
-        buf = ser.read(2)
-        if buf and buf != IN_SYNC + OK:
-            raise Exception(f"Unexpected buff: {buf}")
+        recv_in_sync = ser.read(1)
+        recv_status = ser.read(1)
+        _validate_response(recv_in_sync, recv_status)
 
         sent_chunks += 1
 
         if sent_chunks % 100 == 0 or sent_chunks == len(chunks):
             progress = round(sent_chunks / len(chunks) * 100)
             yield  f"{progress}%"
+
 
 def _get_expected_crc32(flash_size, image):
     crc_value = 0
@@ -212,9 +234,14 @@ def _verify_firmware(ser: Serial, image) -> None:
     ser.reset_input_buffer()
 
     expected_crc = _get_expected_crc32(2080768, image)
+
     ser.write(GET_CRC + END_OF_CMD)
-    buf = ser.read(4)
-    actual_crc = struct.unpack("I", buf)[0]
+    recv_crc = ser.read(4)
+    recv_in_sync = ser.read(1)
+    recv_status = ser.read(1)
+    _validate_response(recv_in_sync, recv_status)
+    
+    actual_crc = struct.unpack("I", recv_crc)[0]
 
     if expected_crc != actual_crc:
         raise Exception(f"Verification failed. Expected crc value to be {expected_crc}, but got {actual_crc}")
@@ -265,7 +292,8 @@ def get_board_info(ser: Serial) -> dict[str, Union[int, str]]:
 
 def upload_firmware(ser: Serial, path: str) -> Generator[str, None, None]:
     
-    _sync(ser)
+    _get_sync(ser)
+    
     _get_info(ser, INFO_BL_REV)
     _get_info(ser, INFO_BOARD_ID)
     _get_info(ser, INFO_FLASH_SIZE)
