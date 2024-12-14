@@ -230,10 +230,10 @@ def _validate_firmware_file(file: str):
     pass
 
 
-def _verify_firmware(ser: Serial, image) -> None:
+def _verify_firmware(ser: Serial, flash_size: int, image: bytes) -> None:
     ser.reset_input_buffer()
 
-    expected_crc = _get_expected_crc32(2080768, image)
+    expected_crc = _get_expected_crc32(flash_size, image)
 
     ser.write(GET_CRC + END_OF_CMD)
     recv_crc = ser.read(4)
@@ -292,11 +292,14 @@ def get_board_info(ser: Serial) -> dict[str, Union[int, str]]:
 
 def upload_firmware(ser: Serial, path: str) -> Generator[str, None, None]:
     
+    # The bootloader requires calling GET_SYNC and GET_DEVICE before sending the
+    # CHIP_ERASE command. For some unknown reason, a single GET_DEVICE call 
+    # doesn't set STATE_ALLOWS_ERASE to True, so we send GET_DEVICE multiple 
+    # times to ensure the correct state.
     _get_sync(ser)
-    
     _get_info(ser, INFO_BL_REV)
     _get_info(ser, INFO_BOARD_ID)
-    _get_info(ser, INFO_FLASH_SIZE)
+    flash_size = _get_info(ser, INFO_FLASH_SIZE)
     
     progress = {
         "Port": ser.name,
@@ -322,7 +325,7 @@ def upload_firmware(ser: Serial, path: str) -> Generator[str, None, None]:
 
     progress["Verifying Firmware"] = "in progress"
     yield progress
-    _verify_firmware(ser, image)
+    _verify_firmware(ser, flash_size, image)
     progress["Verifying Firmware"] = "Completed"
     yield progress
 
