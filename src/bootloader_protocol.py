@@ -79,7 +79,7 @@ crc_table = array.array('I', [
 crc_padding = bytearray(b'\xff\xff\xff\xff')
 
 
-def _validate_response(recv_in_sync: bytes, recv_status: bytes):
+def _validate_response(recv_in_sync: bytes, recv_status: bytes) -> None:
     if recv_in_sync != IN_SYNC:
         raise RuntimeError(f"Expected to recieve IN_SYNC byte, but got {recv_in_sync}")
 
@@ -147,7 +147,7 @@ def _get_chip_description(ser: Serial) -> str:
     return chip_description
 
 
-def _erase_program_area(ser: Serial) -> str:
+def _erase_program_area(ser: Serial) -> None:
     """ 
     Erases the program area of the serial device.
     Before calling this function, the bootloader requires that the following commands 
@@ -206,7 +206,7 @@ def _write_to_program_area(ser: Serial, image: bytes) -> Generator[str, None, No
             yield  f"{progress}%"
 
 
-def _get_expected_crc32(flash_size, image):
+def _get_expected_crc32(flash_size, image) -> int:
     crc_value = 0
 
     for byte in image:
@@ -291,7 +291,7 @@ def get_board_info(ser: Serial) -> dict[str, Union[int, str, list[str, int]]]:
     return board_info
 
 
-def upload_firmware(ser: Serial, path: str) -> Generator[str, None, None]:
+def upload_firmware(ser: Serial, path: str) -> Generator[dict[str, str], None, None]:
     
     # The bootloader requires calling GET_SYNC and GET_DEVICE before sending the
     # CHIP_ERASE command. For some unknown reason, a single GET_DEVICE call 
