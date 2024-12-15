@@ -222,12 +222,6 @@ def _get_expected_crc32(flash_size, image):
     return crc_value
 
 
-def _validate_firmware_file(file: str):
-    # check board type
-    # check flash size
-    pass
-
-
 def _verify_firmware(ser: Serial, flash_size: int, image: bytes) -> None:
     ser.reset_input_buffer()
 
@@ -305,7 +299,7 @@ def upload_firmware(ser: Serial, path: str) -> Generator[str, None, None]:
     # times to ensure the correct state.
     _get_sync(ser)
     _get_info(ser, INFO_BL_REV)
-    _get_info(ser, INFO_BOARD_ID)
+    board_id = _get_info(ser, INFO_BOARD_ID)
     flash_size = _get_info(ser, INFO_FLASH_SIZE)
     
     progress = {
@@ -322,7 +316,13 @@ def upload_firmware(ser: Serial, path: str) -> Generator[str, None, None]:
     yield progress
 
     with open(path, "r") as file:
-        data : str = json.load(file)
+        data: dict = json.load(file)
+        
+    if data["board_id"] != board_id:
+        raise RuntimeError("The provided firmware image is not suitable for this board")
+    if data["image_size"] > flash_size:
+        raise RuntimeError("The firmware image is too large for this board")
+
     encoded_image = data["image"]
     image = zlib.decompress(b64decode(encoded_image))
 
