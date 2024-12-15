@@ -3,6 +3,7 @@ from pymavlink import mavutil
 from serial import Serial
 from serial.tools.list_ports import comports
 from base64 import b64decode
+from boards import match_boards_by_id
 import struct
 import binascii
 import time
@@ -221,9 +222,6 @@ def _get_expected_crc32(flash_size, image):
     return crc_value
 
 
-def _get_compatible_boards(board_id: int):
-    pass
-
 def _validate_firmware_file(file: str):
     # check board type
     # check flash size
@@ -277,14 +275,23 @@ def connect(selected_port: str, baudrate: int = 115200) -> Serial:
     return ser
 
 
-def get_board_info(ser: Serial) -> dict[str, Union[int, str]]:
+def get_board_info(ser: Serial) -> dict[str, Union[int, str, list[str, int]]]:
+    bl_rev = _get_info(ser, INFO_BL_REV)
+    board_id = _get_info(ser, INFO_BOARD_ID)
+    board_rev = _get_info(ser, INFO_BOARD_REV)
+    flash_size = _get_info(ser, INFO_FLASH_SIZE)
+    serial_number = _get_serial_number(ser)
+    chip = _get_chip_description(ser)
+    boards = match_boards_by_id(board_id)
+
     board_info = {
-        "Bootloader Revision": _get_info(ser, INFO_BL_REV),
-        "Board ID": _get_info(ser, INFO_BOARD_ID),
-        "Board Revision": _get_info(ser, INFO_BOARD_REV),
-        "Flash Size": _get_info(ser, INFO_FLASH_SIZE),
-        "Serial Number": _get_serial_number(ser),
-        "Chip": _get_chip_description(ser)
+        "Bootloader Revision": bl_rev,
+        "Board ID": board_id,
+        "Board Revision": board_rev,
+        "Flash Size": flash_size,
+        "Serial Number": serial_number,
+        "Chip": chip,
+        "Select Board": boards
     }
 
     return board_info
