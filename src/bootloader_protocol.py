@@ -2,6 +2,7 @@ from typing import Generator, TYPE_CHECKING, Union
 from pymavlink import mavutil
 from serial import Serial
 from serial.tools.list_ports import comports
+from serial.serialutil import SerialException
 from base64 import b64decode
 from boards import match_boards_by_id
 import struct
@@ -13,6 +14,7 @@ import array
 
 if TYPE_CHECKING:
     from pymavlink.mavutil import mavserial
+    from pymavlink.dialects.v20.common import MAVLink_heartbeat_message
 
 
 # protocol bytes
@@ -239,12 +241,14 @@ def _verify_firmware(ser: Serial, flash_size: int, image: bytes) -> None:
         raise Exception(f"Verification failed. Expected crc value to be {expected_crc}, but got {actual_crc}")
 
 
-def connect(selected_port: str, baudrate: int = 115200) -> Serial:
+def _connect(selected_port: str, baudrate: int = 115200) -> Serial:
+    bus_id: str = ''
     hardware_id: str = ''
     conn: "mavserial" = None
 
     for port in comports():
         if port.device == selected_port:
+            bus_id = port.location
             hardware_id = str(port.vid) + ":" + port.serial_number
             conn = mavutil.mavlink_connection(port.device)
             break
@@ -252,13 +256,38 @@ def connect(selected_port: str, baudrate: int = 115200) -> Serial:
     if conn is None:
         raise Exception("couldn't find the desired serial device")
     
+    # Pymavlink by default set the value of the system id to 0, which will 
+    # prevent us from rebooting the drone if it has another system id. Thus we 
+    # have to set the "target_system" attribute manually.
+    msg: "MAVLink_heartbeat_message" = conn.wait_heartbeat()
+    conn.target_system = msg.get_srcSystem()
+
     conn.reboot_autopilot(True)
-    conn.port.flush()
+    time.sleep(3)
     conn.close()
 
     time.sleep(2)
 
     ser: Serial = None
+
+    # Try to connect using the same port.
+    try:
+        ser = Serial(selected_port, baudrate, timeout=2)
+        return ser
+    except SerialException:
+        pass
+
+    # If the bus id is known, use it to find the correct port.
+    try:
+        for port in comports():
+            if port.location == bus_id:
+                ser = Serial(port.device, baudrate, timeout=2)
+                return ser
+    except SerialException:
+        pass
+
+    # Try to use a combination of the vendor id and the serial number to find
+    # the correct port.
     for port in comports():
         if hardware_id == str(port.vid) + ":" + port.serial_number:
             ser = Serial(port.device, baudrate, timeout=2)
@@ -269,7 +298,9 @@ def connect(selected_port: str, baudrate: int = 115200) -> Serial:
     return ser
 
 
-def get_board_info(ser: Serial) -> dict[str, Union[int, str, list[str, int]]]:
+def get_board_info(port: str) -> dict[str, Union[int, str, list[str, int]]]:
+    ser = _connect(port)
+
     bl_rev = _get_info(ser, INFO_BL_REV)
     board_id = _get_info(ser, INFO_BOARD_ID)
     board_rev = _get_info(ser, INFO_BOARD_REV)
@@ -291,8 +322,9 @@ def get_board_info(ser: Serial) -> dict[str, Union[int, str, list[str, int]]]:
     return board_info
 
 
-def upload_firmware(ser: Serial, path: str) -> Generator[dict[str, str], None, None]:
-    
+def upload_firmware(port: str, path: str) -> Generator[dict[str, str], None, None]:
+    ser = _connect(port)
+
     # The bootloader requires calling GET_SYNC and GET_DEVICE before sending the
     # CHIP_ERASE command. For some unknown reason, a single GET_DEVICE call 
     # doesn't set STATE_ALLOWS_ERASE to True, so we send GET_DEVICE multiple 
