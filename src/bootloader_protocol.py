@@ -259,8 +259,11 @@ def _connect(selected_port: str, baudrate: int = 115200) -> Serial:
     # Pymavlink by default set the value of the system id to 0, which will 
     # prevent us from rebooting the drone if it has another system id. Thus we 
     # have to set the "target_system" attribute manually.
-    msg: "MAVLink_heartbeat_message" = conn.wait_heartbeat()
-    conn.target_system = msg.get_srcSystem()
+    msg: "MAVLink_heartbeat_message" = conn.wait_heartbeat(timeout= 2)
+    if not msg:
+        raise TimeoutError("Couldn't recieve heartbeat message from the drone.")
+    else:
+        conn.target_system = msg.get_srcSystem()
 
     conn.reboot_autopilot(True)
     time.sleep(3)
