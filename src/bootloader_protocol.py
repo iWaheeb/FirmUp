@@ -266,8 +266,6 @@ def _connect(selected_port: str, baudrate: int = 115200) -> Serial:
     time.sleep(3)
     conn.close()
 
-    time.sleep(2)
-
     ser: Serial = None
 
     # Try to connect using the same port.
@@ -357,6 +355,9 @@ def upload_firmware(port: str, path: str) -> Generator[dict[str, str], None, Non
 
     encoded_image = data["image"]
     image = zlib.decompress(b64decode(encoded_image))
+    # pad image to 4-byte length
+    while ((len(image) % 4) != 0):
+        image += bytes(0xFF)
 
     for prog in _write_to_program_area(ser, image):
         progress["Uploading Firmware"] = prog
