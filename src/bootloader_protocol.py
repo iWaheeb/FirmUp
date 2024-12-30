@@ -149,6 +149,13 @@ def _get_chip_description(ser: Serial) -> str:
     return chip_description
 
 
+def _check_firmware_compatibility(board_id, flash_size, firmware_file) -> None:
+    if firmware_file["board_id"] != board_id:
+        raise RuntimeError("The provided firmware image is not suitable for this board")
+    if firmware_file["image_size"] > flash_size:
+        raise RuntimeError("The firmware image is too large for this board")
+
+
 def _erase_program_area(ser: Serial) -> None:
     """ 
     Erases the program area of the serial device.
@@ -173,6 +180,14 @@ def _erase_program_area(ser: Serial) -> None:
     recv_status = bytes([buf[1]])
     _validate_response(recv_in_sync, recv_status)
     
+
+def _get_image(firmware_file) -> bytes:
+    image = zlib.decompress(b64decode(firmware_file["image"]))
+    # pad image to 4-byte length
+    while ((len(image) % 4) != 0):
+        image += bytes(0xFF)
+    return image
+
 
 def _write_to_program_area(ser: Serial, image: bytes) -> Generator[str, None, None]:
     """"
@@ -335,6 +350,10 @@ def upload_firmware(port: str, path: str) -> Generator[dict[str, str], None, Non
     board_id = _get_info(ser, INFO_BOARD_ID)
     flash_size = _get_info(ser, INFO_FLASH_SIZE)
     
+    with open(path, "r") as file:
+        firmware_file: dict = json.load(file)
+    _check_firmware_compatibility(board_id, flash_size, firmware_file)
+
     progress = {
         "Port": ser.name,
         "Erasing Chip": "in progress",
@@ -348,19 +367,7 @@ def upload_firmware(port: str, path: str) -> Generator[dict[str, str], None, Non
     progress["Uploading Firmware"] = "0%"
     yield progress
 
-    with open(path, "r") as file:
-        data: dict = json.load(file)
-        
-    if data["board_id"] != board_id:
-        raise RuntimeError("The provided firmware image is not suitable for this board")
-    if data["image_size"] > flash_size:
-        raise RuntimeError("The firmware image is too large for this board")
-
-    encoded_image = data["image"]
-    image = zlib.decompress(b64decode(encoded_image))
-    # pad image to 4-byte length
-    while ((len(image) % 4) != 0):
-        image += bytes(0xFF)
+    image = _get_image(firmware_file)
 
     for prog in _write_to_program_area(ser, image):
         progress["Uploading Firmware"] = prog
